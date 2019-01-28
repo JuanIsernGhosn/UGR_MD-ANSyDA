@@ -1,0 +1,817 @@
+---
+title: "Trabajo de detección de anomalías"
+author: | 
+  | Juan Ignacio Isern Ghosn
+  | Universidad de Granada
+  | Minería de datos: Aprendizaje no supervisado y detección de anomalías
+date: "15/02/2019"
+output: 
+    pdf_document:
+        fig_caption: true
+        number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+\newpage
+\tableofcontents 
+\newpage
+
+# Resumen
+El documento que aquí se presenta se corresponde con el informe resultante del trabajo de detección de anomalías, para la asignatura Minería de Datos: Aprendizaje no supervizado y detección de anomalías. Este trabajo se ha llevado a cabo sobre el conjunto de datos *Vertebral Column*, obtenido del archivo de la Universidad de California en Irvine (UCI). 
+En este trabajo se han utilizado diversas técnicas para la detección de outliers o valores anómalos, se correspondan a una variable concreta (univariantes) o por la combinación de diversas variables (multivariantes).
+
+# Ajuste del entorno
+A continuación se lleva a cabo la carga de los scripts necesarios para la detección de anomalías en la forma que las directrices de la asignatura lo requieren
+```{r message=FALSE}
+source("!Outliers_A2_Librerias_a_cargar_en_cada_sesion.R")
+source("!Outliers_A3_Funciones_a_cargar_en_cada_sesion.R")
+```
+
+## Dataset escogido: Vertebral Column Data Set
+Conjunto de datos que contiene valores para seis características biomecánicas utilizadas para clasificar a los pacientes ortopédicos en 3 clases (normal, hernia de disco o espondilolistesis) o 2 clases (normal o anormal).
+
+### Carga de datos
+Los datos se han obtenido del archivo de la Universidad de California en Irvine (UCI), que posee una gran cantidad de conjuntos de datos de libre acceso, donados por particulares profesionales y/o empresas.
+
+```{r}
+temp <- tempfile()
+download.file("https://archive.ics.uci.edu/ml/machine-learning-databases/00212/vertebral_column_data.zip",temp)
+dataset <- read.table(unz(temp, "column_3C.dat"))
+names(dataset) <- c("InciPel", "InclPel", "AngLor", "PenSac", "RadPel", "GraEsp", "Clase")
+rm(temp)
+```
+
+Cada paciente está representado en el conjunto de datos mediante seis atributos biomecánicos derivados de la forma y orientación de la pelvis y la columna lumbar (en este orden):
+
+1.  Incidencia pélvica **(InciPel)**
+2.  Inclinación de la pelvis **(InclPel)**
+3.  Ángulo de lordosis lumbar **(AngLor)**
+4.  Pendiente sacra **(PenSac)**
+5.  Radio de la pelvis **(RadPel)**
+6.  Grado de espondilolistesis **(GraEsp)**
+7.  Clase: Hernia de disco **(DH)**, Espondilolistesis **(SL)**, Normal **(NO)** y Anormal **(AB)**
+
+\newpage
+
+# Outliers univariados en la variable de la Incidencia pélvica (InciPel)
+A continuación, en esta parte del documento se expone el procedimiento para llevar a cabo la detección heurística de Outliers en 1 variable según el método IQR.
+
+```{r}
+mydata.numeric  = dataset[,-ncol(dataset)] #Sin clase
+indice.columna  = 1
+nombre.mydata   = "Vertebral DataSet"
+
+mydata.numeric.scaled <- scale(mydata.numeric)
+columna <- mydata.numeric[,indice.columna]
+nombre.columna <- names(mydata.numeric)[indice.columna]
+columna.scaled <- mydata.numeric.scaled[,indice.columna]
+```
+
+## Cálculo de vector booleano de outliers normales y extremos
+A continuación, se calculan las fronteras a partir de las cuales una observación se convierte en outlier, pudiendo ser considerado normal y extremo. Para ello será necesario en primer lugar, calcular la distancia inter-cuartil (IQR). Outliers normales serán aquellos que excendan en 1.5 IQR el primer o tercer cuartil, por abajo y por arriba respectivamente, y outliers extremos los que lo hagan en 3 IQR.
+
+```{r}
+# Cálculo de la distancia inter-cuartil
+cuartil.primero <- unname(quantile(columna,0.25))
+cuartil.tercero <- unname(quantile(columna,0.75))
+iqr <- cuartil.tercero - cuartil.primero
+# Cálculo de los outliers normales
+extremo.superior.outlier.normal <- cuartil.tercero + 1.5 * iqr
+extremo.inferior.outlier.normal <- cuartil.primero - 1.5 * iqr
+# Cálculo outliers extremos
+extremo.superior.outlier.extremo <- cuartil.tercero + 3 * iqr
+extremo.inferior.outlier.extremo <- cuartil.primero - 3 * iqr
+print("Límites para outliers normales")
+c(extremo.superior.outlier.normal, extremo.inferior.outlier.normal)
+print("Límites para outliers extremos")
+c(extremo.superior.outlier.extremo, extremo.inferior.outlier.extremo)
+# Vector booleano de outliers normales
+vector.es.outlier.normal <- columna > extremo.superior.outlier.normal | 
+    columna < extremo.inferior.outlier.normal
+# Vector booleano de outliers extremos
+vector.es.outlier.extremo <- columna > extremo.superior.outlier.extremo | 
+    columna < extremo.inferior.outlier.extremo
+
+table(vector.es.outlier.normal)
+table(vector.es.outlier.extremo)
+```
+
+Tal y como se puede observar, los límites establecidos para outliers normal son mas restrictivos, pues estos valores si bien atípicos, son más cercanos a la distribución del resto de valores de la variable.
+
+A su vez, podemos observar como hay **tres outliers normales** y **no hay outliers extremos**.
+
+## Índices y valores de los outliers identificados
+A continuación, una vez que en el paso anterior se han identificado los outliers normales y extremos, se lleva a cabo la obtención del índice correspondiente a tal observación y su respectivo valor:
+
+```{r}
+# Obtención del id de fila de los outliers normales y extremos
+claves.outliers.normales <- which(vector.es.outlier.normal)
+claves.outliers.extremos <- which(vector.es.outlier.extremo)
+# Obtención de las filas completas de los outliers normales y extremos
+data.frame.outliers.normales <- as.data.frame(mydata.numeric.scaled)[claves.outliers.normales,]
+data.frame.outliers.extremos <- as.data.frame(mydata.numeric.scaled)[claves.outliers.extremos,]
+# ID de la fila de los outliers normales y extemos
+nombres.outliers.normales <- rownames(data.frame.outliers.normales)
+nombres.outliers.extremos <- rownames(data.frame.outliers.extremos)
+# Obtención del valor de los outlier normales y extremos solo para la columna analizada
+valores.outliers.normales <- data.frame.outliers.normales[,indice.columna]
+valores.outliers.extremos <- data.frame.outliers.extremos[,indice.columna]
+
+data.frame.outliers.normales
+```
+
+En la salida anterior se puede observar las observaciones que resultan outliers para la variable incidencia pélvica, siendo estas outliers normales, pues como hemos visto anteriormente, no hay outliers extremos para esta variable concreta. 
+
+## Desviación de los outliers con respecto a la media de la columna
+A continuación se obtienen los valores normalizados (con respecto a la media del propio atributo analizado) de los outliers de la columna en cuestión.
+
+```{r}
+valores.normalizados.outliers.normales <- columna.scaled[vector.es.outlier.normal]
+valores.normalizados.outliers.normales
+```
+
+Tal y como se puede apreciar, esta z-score obtenida es muy elevada, lo que hace que se encuentre muy alejada de la media de la distribución de la variable y que hace pensar que confirma la existencia de estos tres outliers.
+
+## Gráfico de puntos
+A continuación se representan los distintos valores que las observaciones toman de la variable de estudio y en rojo se representan aquellas que tienen valores atípicos.
+
+```{r}
+# Gráfico outliers normales
+MiPlot_Univariate_Outliers(columna.scaled, 
+                           claves.outliers.normales,
+                           colnames(mydata.numeric)[indice.columna])
+# Gráfico outliers extremos
+MiPlot_Univariate_Outliers(columna.scaled, 
+                           claves.outliers.extremos,
+                           colnames(mydata.numeric)[indice.columna])
+```
+
+Podemos observar como en el gráfico de los outliers normales quedan representados aquellos puntos en rojo que se corresponden a los tres outliers identificados y como en el gráfico de outliers extremos no hay ninguno, verificando lo anteriormente ya sabido.
+
+## BoxPlot
+En un boxplot a continuación también se representan los distintos valores de la variable de estudio, remarcando dentro de la distribución de valores, donde se encuentran los valores atípicos. En otro boxplot se muestra la misma variable con sus datos normalizados, para demostrar que la distribución no varía tras llevar a cabo la normalización.
+
+```{r}
+# Boxplot variable con outliers remarcados
+MiBoxPlot_IQR_Univariate_Outliers(mydata.numeric, indice.columna, coef = 1.5)
+# Boxplot variable con outliers remarcados y normalizado
+MiBoxPlot_IQR_Univariate_Outliers(mydata.numeric.scaled, indice.columna)
+```
+
+Tal y como se puede observar, ambos boxplot muestran una misma distribución dentro de los valores de la variable de estudio, estando diferenciandos solo en la escala en la que se miden. También se aprecian los tres puntos por encima de la caja, correspondientes a los outliers anteriormente descubiertos.
+
+## Realización del análisis con funciones propias
+A continuación, se llevará a cabo el mismo análisis efectuado pero haciendo uso de las funciones provistas por el equipo docente de la asignatura.
+
+### Cálculo de vector booleano de outliers
+A continuación se utiliza una función provista en el fichero *!Outliers_A3_Funciones_a_ cargar_en_cada_sesion.R* para llevar a cabo el cálculo de un vector de booleanos que determine si un determinado elemento de una variable concreta supera en un cierto umbral *coef* el primero o tercer cuartil, a fin de que sea o no considerado un outlier:
+
+```{r}
+vector_claves_outlier_IQR <- vector_es_outlier_IQR(mydata.numeric.scaled, 
+                                                    indice.columna, 
+                                                    coef = 1.5)
+table(vector_claves_outlier_IQR)
+```
+
+Tal y como vemos, **se obtienen los tres outliers normales** que habiamos descubierto anteriormente haciendo el mismo procedimiento de forma manual.
+
+### BoxPlot para todas las variables
+En este epígrafe se muestra una representación conjunta de boxplot para cada una de las variables del conjunto de datos normalizadas, marcando en rojo aquello puntos que son outliers de cualquier tipo (normales y extremos). A su vez, se muestra otro gráfico similar con los valores etiquetados.
+
+```{r}
+# Boxplot con outliers remarcados
+MiBoxPlot_juntos(mydata.numeric)
+# Boxplot con outliers remarcados y etiquetados
+MiBoxPlot_juntos_con_etiquetas(mydata.numeric.scaled)
+```
+
+Se puede apreciar como el radio de la pelvis parece que es la variable en la que hay más valores atípicos, seguido de la inclinación de la pelvis y del grado de espondilolistesis.
+
+## Ampliación
+A continuación se lleva a cabo la parte del análisis reservada para aquellos que llevaron a cabo el trabajo de detección de anomalías frente al de reglas de asociación.
+
+### Cálculo de outliers en alguna de las columnas
+A continuación se itera sobre todas las columnas por medio de la función sapply, a fin de detectar todas aquellas observaciones que tienen valores atípicos en cualquiera de sus columnas.
+
+```{r}
+indices.de.outliers.en.alguna.columna <- 
+    unique(unlist(sapply(1:ncol(mydata.numeric),
+                  function(x){
+                      vector_claves_outliers_IQR(mydata.numeric, x)
+                      })))
+indices.de.outliers.en.alguna.columna
+```
+
+El listado de IDs de filas de las observaciones que tienen resultan outlier para alguna de sus variables es el arriba mostrado.
+
+### Valores de los outliers identificados para alguna de las columnas
+A continuación se muestran de forma íntegra algunas de las observaciones cuyos valores de variables resultan en al menos un caso outliers. Todos los datos se encuentran previamente normalizados.
+
+```{r}
+head(mydata.numeric.scaled[indices.de.outliers.en.alguna.columna, ])
+```
+
+Esta salida es una muestra, pues el número total de outliers univariantes es bastante superior a los aquí mostrados. En cualquier caso, vemos como para los ejemplos presentes, su z-score es bastante elevado en alguna de sus variables.
+
+### Función para cálculo automático de índices de outliers univariantes
+Del mismo modo que se han calculado anteriormente los índices de aquellas observaciones que resultan outliers en alguna de sus variables (outliers univariantes), se lleva a cabo el mismo cálculo generando una función que se muestra a continuación.
+
+```{r}
+vector_claves_outliers_IQR_en_alguna_columna <- function(datos, coef = 1.5){
+    unique(unlist(sapply(1:ncol(mydata.numeric),
+                  function(x){
+                      vector_claves_outliers_IQR(mydata.numeric,
+                                                 x, 
+                                                 coef = coef)
+                      })))
+}
+
+vector_claves_outliers_IQR_en_alguna_columna(mydata.numeric)
+```
+
+Como podemos observar el valor es similar al anteriormente obtenido en el cálculo manual, pues sigue el mismo procedimiento, si bien se ha encapsulado en una nueva función que podrá ser utilizada en cualquier otra situación que se requiera.
+
+# Outliers univariados mediante test estadísticos
+Este epígrafe del trabajo se corresponde a la determinación de la existencia de outliers univariados por medio del uso de test estadísticos.
+
+## Un único outlier
+A continuación se analiza la circunstancia  de cuando existe un único outlier en los datos a analizar. Para ello la variable a analizar será la pendiente sacra (PenSac), pues graficamente podemos intuir que en ella hay un outlier:
+
+```{r}
+mydata.numeric  = dataset[,-ncol(dataset)] 
+# Selección de la variable
+mydata.numeric <- mydata.numeric$PenSac
+# Histograma de la variable
+hist(mydata.numeric)
+# Gráfico de puntos de la variable
+plot(mydata.numeric)
+```
+
+Efectivamente, en esta variable solo hay un valor que se salga claramente de la distribución habitual de la misma. 
+
+### Test de Grubbs
+El test que se lleva a cabo a continuación plantea en su hipótesis alternativa la existencia de un único outlier. Así, se aplica sobre la variable anterior a ver si nuestra suposición de la existencia de ese outlier es cierta:
+
+```{r}
+# Cálculo del test de Grubbs
+test.de.Grubbs <- grubbs.test(mydata.numeric, two.sided = TRUE)
+# Extracción del p-value del test te Grubbs
+test.de.Grubbs$p.value
+```
+
+El test de Grubbs es significativo, por lo que consideramos la **existencia de un outlier en la variable PenSac**.
+
+### Índice y valor del outlier
+Obtenemos el índice de la fila de la observación que es outlier en la variable PenSac y obtenemos su valor:
+
+```{r}
+# Obtención del índice del valor atípico según Grubbs
+indice.de.outlier.Grubbs <- order(abs(mydata.numeric - mean(mydata.numeric)), 
+                                  decreasing = TRUE)[1]
+# Obtención del valor atípico según Grubbs
+valor.de.outlier.Grubbs <- mydata.numeric[indice.de.outlier.Grubbs]
+paste("Observación",indice.de.outlier.Grubbs,"con valor:", valor.de.outlier.Grubbs)
+```
+
+Tal y como se muestra en la salida, **el outlier para PenSac es la observación 116 y tiene de valor 121.43.**
+
+### Gráfico de puntos
+A continuación, se representan los distintos valores que las observaciones toman de la variable PenSac y en rojo se representa aquella observación que Grubbs ha determinado como outlier.
+
+```{r}
+MiPlot_Univariate_Outliers(mydata.numeric, indice.de.outlier.Grubbs, "Outliers")
+```
+
+Efectivamente, el sentido común se ha confirmado en este caso y la variable PenSac tiene un outlier que se remarca en rojo en el gráfico anterior.
+
+## Ampliación
+A continuación, se lleva a cabo la parte del análisis reservada para aquellos que llevaron a cabo el trabajo de detección de anomalías frente al de reglas de asociación.
+
+### Función que engloba el análisis anterior de un outlier (Grubbs)
+A continuación se utiliza una función provista en el fichero *!Outliers_A3_Funciones_a_ cargar_en_cada_sesion.R* para llevar a cabo el mismo análisis realizado anteriormente mendiante el test de Grubbs y el gráfico que pone de manifiesto la existencia del outlier:
+
+```{r}
+MiPlot_resultados_TestGrubbs(mydata.numeric)
+```
+
+Efectivamente, la salida es la misma, y el test de Grubbs es nuevamente significativo y el gráfico muestra dicho outlier.
+
+### Masking en el test de Grubbs
+Sobre una variable que aparentemente tiene más de un outlier (InciPel), se evalúa el test de Grubbs a fin de ver si funciona o por el contrario, la existencia de más de un outlier enmascara (masking) la presencia de solo uno de ellos (hipótesis alternativa del test).
+
+```{r}
+mydata.numeric  = dataset[,-ncol(dataset)] 
+# Selección de la variable
+mydata.numeric <- mydata.numeric$RadPel
+# Gráfica de puntos de la variable RadPel
+plot(mydata.numeric)
+# Test de Grubbs para la variable RadPel
+test.de.Grubbs = grubbs.test(mydata.numeric, two.sided = TRUE)
+test.de.Grubbs$p.value
+# Gráfica de puntos de RadPel con los outliers remarcados
+MiPlot_resultados_TestGrubbs(mydata.numeric)
+```
+
+Efectivamente, frente a esta variable con más de un outlier no se puede rechazar la hipótesis nula, por lo que **la presencia de varios outliers enmascara la realidad**.
+
+### Test de Rosner con más de un outlier
+Para solventar el problema del masking, existe el test de Rosner, el cual tiene por hipótesis alternativa la presencia de menos de k outliers, frente a la hipótesis nula de la inexistencia de outliers. Para comprobar la utilidad de este test se utiliza la variable Incidencia pélvica **(InciPel)**, que anteriormente ha demostrado que tiene tres outliers:
+
+```{r}
+mydata.numeric  = dataset[,-ncol(dataset)] 
+# Selección de la variable
+mydata.numeric <- mydata.numeric$InciPel
+# Test de Rosner para menos de 4 outliers
+test.de.rosner <- rosnerTest(mydata.numeric, k=4)
+# Vector de booleans de outliers
+test.de.rosner$all.stats$Outlier
+# Índices de los elementos analizados por el test
+test.de.rosner$all.stats$Obs.Num
+# Índices de los outliers obtenidos
+indices_de.outliers_rosner <- test.de.rosner$all.stats$Obs.Num[test.de.rosner$all.stats$Outlier]
+# Gráfica de los outliers
+MiPlot_Univariate_Outliers (mydata.numeric, indices_de.outliers_rosner, "Test de Rosner")
+```
+
+Según el análisis realizado por medio de la IQR en la primera parte de este documento, la variable Incidencia pélvica tiene tres outliers. Sin embargo, una vez realizado el test de Rosner para menos de cuatro outliers, da como resultado que solo uno de ellos lo es y así se muestra en la gráfica de puntos.
+
+### Test de Rosner para más de un outlier mediante función provista en clase
+Se lleva a cabo el mismo análisis realizado en el punto anterior sobre la variable Incidencia pélvica **(InciPel)**, pero por medio de una función provista en el fichero *!Outliers_A3_Funciones_ a_cargar_en_cada_sesion.R*, que realiza tanto el test, como la gráfica automáticamente:
+
+```{r}
+MiPlot_resultados_TestRosner(mydata.numeric)
+```
+
+Al igual que en punto anterior, podemos observar como el test de Rosner para menos de cuatro outliers, nos indica que solo uno de ellos lo es realmente y nuevamente, así se muestra en el gráfico que la función anterior tambíen dibuja.
+
+### Test de Rosner para un outlier mediante función provista en clase
+Se realizará el mismo experimento con la función *MiPlot_resultados_TestRosner* provista en *!Outliers_A3_Funciones_a_ cargar_en_cada_sesion.R*, pero ahora para una variable que con certeza sabemos que tiene un único outlier, Pendiente sacra **(PenSac)**.
+
+```{r}
+mydata.numeric  = dataset[,-ncol(dataset)] 
+# Selección de la variable
+mydata.numeric <- mydata.numeric$PenSac
+# Función para el test de Rosner y plotting
+MiPlot_resultados_TestRosner(mydata.numeric)
+```
+
+Siguiendo el sentido común, este test verifica la existencia de un outlier, pues no podemos aceptar la hipótesis nula, en favor de la alternativa, que dice que hay menos de k = 4 outliers. Esto lo podemos apreciar en la gráfica dibujada por la función provista en el fichero de funciones.
+
+### Test de Rosner para más de un outlier mediante función provista en clase
+Se realizará el mismo experimento con la función *MiPlot_resultados_TestRosner*, pero para una variable que a priori tiene varios outliers, como es Radio de la pelvis **(RadPel)**.
+
+```{r}
+mydata.numeric  = dataset[,-ncol(dataset)] 
+# Selección de la variable
+mydata.numeric <- mydata.numeric$RadPel
+# Función para el test de Rosner y plotting
+MiPlot_resultados_TestRosner(mydata.numeric)
+```
+
+En este caso, el test de Rosner ha determinado que no hay outliers para esta variable, en contra de lo hallado mediante la IQR.
+
+\newpage
+
+# Outliers multivariados por medio de Mahalanobis
+Un registro será un outlier porque tenga un valor anómalo en alguna variable o porque tenga una combinación anómala de valores. En este epígrafe se llevará a cabo la determinación de los outliers con respecto a un conjunto de variables y mediante la distancia de Mahalanobis.
+
+## Outliers multivariados
+Con la función uni.plot, calculamos los outliers multivariados presenten en nuestro conjunto de datos considerando la estimación robusta de la matriz de covarianzas (MCD) y la estimación robusta de la media de cada variable. Además imprime un plot unidimensional donde se aprecian los outliers para todas las variables.
+
+```{r}
+mydata.numeric <- dataset[,-ncol(dataset)] 
+mydata.numeric.scaled = scale(mydata.numeric, center = TRUE)
+set.seed(52)
+mvoutlier.plot <- uni.plot(mydata.numeric, symb = FALSE, alpha = 0.05, quan = 0.8)
+```
+
+Tal y como se puede apreciar, solo se detecta la existencia de dos outlier multivariados, estando estos representados en los dos puntos rojos en cada una de las variables del gráfico anterior.
+
+## Información de los outliers multivariados
+A continuación, se calcula tanto un vector de boolean que determina si cada entrada del conjunto de datos es o no un outlier multivariado, como el índice de dichos outliers y el número de ellos que hay.
+
+```{r}
+# Vector de booleans de si son o no outliers mutlivariados
+is.MCD.outlier <-  mvoutlier.plot$outliers
+# Número de outliers
+numero.de.outliers.MCD <- sum(is.MCD.outlier)
+# Índice de los outliers
+indices.de.outliers.multivariantes.MCD <- which(mvoutlier.plot$outliers)
+cat("Hay", numero.de.outliers.MCD, 
+    "outliers multivariados, cuyos índices son:", 
+    indices.de.outliers.multivariantes.MCD)
+```
+
+Tal y como se puede apreciar, se han encontrado 39 outliers multivariantes, siguiendo la primera impresión que tuvimos con el gráfico de la función anterior. Estos outliers tienen el ID de fila arriba mostrado.
+
+## Desviación de la media de los outliers multivariados
+Determinamos en un dataframe el valor normalizado de los outliers multivariados, de forma que podemos apreciar cuando se desvían estos de la media de la variable.
+
+```{r}
+data.frame.solo.outliers <- mydata.numeric.scaled[is.MCD.outlier,]
+head(data.frame.solo.outliers)
+```
+
+Parece que se puede intuir que por la alta z-score que estas observaciones tienen, en al menos una de sus variables, les hacen candidatos a ser outliers univariados y por tanto, multivariados, habrá que hacer un análisis en mayor profundidad para determinar los outliers multivariados puros.
+
+## Boxplot con los outliers multivariados identificados
+A continuación, se muestra un boxplot para cada una de las variables, con todos los outliers identificados y etiquetados con su ID de fila:
+
+```{r}
+MiBoxPlot_juntos(mydata.numeric.scaled,is.MCD.outlier)
+```
+
+Se aprecia como los outliers multivariados son efecto de que en alguna de sus variables tienen un valor que difiere en gran medida de la distribución de las mismas, siendo por tanto outliers univariados también.
+
+## BiPlot con PCA y outliers multivariados
+A continuación, por medio de la función *MiBiPlot_Multivariate_Outliers* del fichero *!Outliers_A3_Funciones_a_ cargar_en_cada_sesion.R*, se muestra un BiPlot que nos muestra una representación aproximada de n dimensiones a 2, representando en rojo los outliers multivariados existente.
+
+```{r echo=FALSE, comment=FALSE}
+MiBiPlot_Multivariate_Outliers(mydata.numeric.scaled, is.MCD.outlier, "Outliers")
+```
+
+Se puede apreciar que los outliers multivariados se encuentra alejados de la nube de puntos principal, que se situa alrededor de la media de los componentes, estando uno de ellos claramente alejado del resto.
+
+## Ampliación
+A continuación, se lleva a cabo la parte del análisis reservada para aquellos que llevaron a cabo el trabajo de detección de anomalías frente al de reglas de asociación.
+
+### Outliers multivariados puros
+A continuación, se obtienen aquellas observaciones, que no siendo outliers univariados, lo son multivariados, por la combinación de los valores de sus variables
+
+```{r}
+# Outliers univariantes
+indices.de.outliers.en.alguna.columna <- vector_claves_outliers_IQR_en_alguna_columna(mydata.numeric) 
+# Índices outliers multivariantes puros
+indices.de.outliers.multivariantes.MCD.pero.no.1variantes <-
+    setdiff(indices.de.outliers.en.alguna.columna,
+            indices.de.outliers.multivariantes.MCD)
+# Nombres outliers multivariantes puros
+nombres.de.outliers.multivariantes.MCD.pero.no.1variantes <-
+    rownames(mydata.numeric)[indices.de.outliers.multivariantes.MCD.pero.no.1variantes]
+nombres.de.outliers.multivariantes.MCD.pero.no.1variantes
+```
+
+Como se puede apreciar en la salida anterior, hay siete observaciones de columnas que resultan outliers multivariantes no siendo univariantes para ninguna de sus variables.
+
+### Matriz de gráficos de dispersión
+A fin de tener una mejor imagen de lo que sucede para la existencia de outliers multivariados, generamos una matriz de gráficos de dispersión que relacionan todas las variables de nuestro conjunto de datos, estando en rojo marcadas aquellas observaciones que son outliers.
+
+```{r}
+MiPlot_Univariate_Outliers(mydata.numeric,
+                           indices.de.outliers.multivariantes.MCD.pero.no.1variantes,
+                           "Outliers multivariados por pares de variables")
+```
+
+Podemos observar como para algunas combinaciones de variables, algunas observaciones se sitúan en el extremo de la nube de puntos, destacanto la relación entre incidencia pélvica **(InciPel)** e inclinación de la pelvis **(InclPel)** y el radio de la pelvis **(RadPel)**. Así pues, parece que las características de la pelvis son las que tienen un efecto mayor en la determinación de los valores anómalos multivariados en nuestro conjunto de datos.
+
+\newpage
+
+# Outliers multivariados por medio de LOF
+En este epígrafe del trabajo se propone la determinación de outliers multivariados por medio del método de LOF (local outlier factor). Este es un algoritmo para encontrar puntos de datos anómalos mediante la medición de la desviación local de un dato determinado con respecto a sus vecinos. Como es un método basado en distancia habrá que normalizar los datos previamente:
+
+```{r}
+mis.datos.numericos <- dataset[,-ncol(dataset)]
+mis.datos.numericos.normalizados <- as.data.frame(scale(mis.datos.numericos))
+```
+
+## Limitaciones de la distancia de Mahalanobis
+En muchas ocasiones el método de Mahalanobis no es del todo aplicable, dependiendo de las distribuciones de nuestras variables, que pueden formar un otro grupo homogéneo distinto a la distribución habitual, que son interpretados como outliers según Mahalanobis.
+
+```{r}
+set.seed(12)
+is.MCD.outlier <- uni.plot(mis.datos.numericos, symb = FALSE, alpha = 0.05, quan = 0.8)
+numero.de.outliers.MCD <- which(is.MCD.outlier$outliers)
+```
+
+Podemos apreciar que hay observaciones que parecen tener variables que aun con valores similares, son consideradas outliers, cuando pueden ser otro grupo dentro de nuestros datos.
+```{r}
+corr.plot(mis.datos.numericos[,1], mis.datos.numericos[,6]) 
+```
+
+En el gráfico de dispersión anterior vemos como ante combinaciones entre la variable Incidencia pélvica **(InciPel)** y Grado de espondilolistesis **(GraEsp)**, hay una gran cantidad de observaciones con características similares que se enccuentran fuera del elipsoide rojo, cuando a lo mejor no deberían ser outliers.
+
+```{r}
+MiBiplot(mis.datos.numericos)
+```
+
+En la representación que el Biplot anterior hace de todas las dimensiones proyectadas en 2, apreciamos como arriba a la izquierda de la nube de puntos principal, hay otra que puede corresponderse al otro grupo del que hemos hablado anteriormente.
+
+## Outliers basados en distancia (LOF)
+La distancia LOF se calcula como el factor entre la distancia de un punto hacia sus vecinos y la densidad entre ellos, por ello, al ser un método basado en vecinos, es imprescindible en primer lugar determinar el número de vecinos a tener en cuenta:
+
+```{r}
+# Número de vecinos para el cálculo del LOF score
+numero.de.vecinos.lof <- 5
+# Obtención de la LOF score de las observaciones
+lof.scores <- lofactor(mis.datos.numericos.normalizados, k = numero.de.vecinos.lof)
+# Gráfico de puntos del valor de LOF score para cada observación
+plot(lof.scores)
+```
+
+En el gráfico superior vemos las distintas puntuaciones de LOF que tienen las observaciones de nuestro conjunto de datos. Así, seremos nosotros los que debamos establecer que número de ellas deben ser determinadas outliers:
+
+```{r}
+# Número de outliers presentes (Aquellos n con mayor LOF score)
+numero.de.outliers <- 20
+# Observaciones ordenadas por LOF score
+indices.de.lof.outliers.ordenados <- order(lof.scores, decreasing = TRUE)
+# Top n observaciones de mayor LOF score
+indices.de.lof.top.outliers <- indices.de.lof.outliers.ordenados[1:numero.de.outliers]
+# Vector boolean de si es outlier
+is.lof.outlier <- row.names(mis.datos.numericos.normalizados) %in% indices.de.lof.top.outliers
+# Biplot PCA con outliers obtenidos mediante LOF-score etiquetados
+MiBiPlot_Multivariate_Outliers(mis.datos.numericos, is.lof.outlier, "Biplot de los outliers")
+```
+
+Tal y como se puede apreciar, los outliers determinados por el algoritmo LOF son aquellas observaciones se encuentran alejados del resto, bien por que se encuentran alejadas de todos los puntos, o porque están en medio de nubes de puntos que pueden corresponderse a grupos homogéneos.
+
+## Ampliación
+A continuación, se lleva a cabo la parte del análisis reservada para aquellos que llevaron a cabo el trabajo de detección de anomalías frente al de reglas de asociación.
+
+### Outliers multivariantes LOF pero no univarianes IQR
+Para ver la diferencia entre dos de los distintos métodos que hasta ahora hemos presentado, vamos a comprobar empíricamente como hay diferencias ente la obtención de outliers por la LOF score y la IQR:
+
+```{r}
+# Indices outliers univariantes
+vector.claves.outliers.IQR.en.alguna.columna <- 
+    vector_claves_outliers_IQR_en_alguna_columna(mydata.numeric)
+# Vector de boolean de outliers univariantes
+vector.es.outlier.IQR.en.alguna.columna <- 
+    vector_es_outlier_IQR_en_alguna_columna(mydata.numeric)
+# Biplot PCA con outliers univariantes obtenidos por la IQR etiquetados
+MiBiPlot_Multivariate_Outliers(mydata.numeric, 
+                               vector.es.outlier.IQR.en.alguna.columna, "Biplot de los outliers")
+# Outliers multivariantes LOF pero no univariantes IQR
+indices.de.outliers.multivariantes.LOF.pero.no.1variantes <-
+    setdiff(indices.de.lof.top.outliers, 
+            vector.claves.outliers.IQR.en.alguna.columna)
+```
+
+Como se puede apreciar en el gráfico anterior, los outliers determinados por medio de la IQR son aquellos que se encuentran alejados de la nube de puntos principal, donde se encuentran las observaciones de valores similares a las medias de las variables. Vemos como a diferencia de la determinación de outliers por medio de la LOF score, se consideran algunos que hemos visto que pueden ser debidas a la existencia de otros grupos con distinta distribución dentro de los mismos datos.
+
+```{r}
+# Outliers multivariantes LOF
+indices.de.lof.top.outliers
+# Outliers multivariantes LOF pero no univariantes IQR
+indices.de.outliers.multivariantes.LOF.pero.no.1variantes
+```
+
+Así, se puede apreciar en la salida anterior, que muchos de los outliers multivariantes determinados por medio de la LOF-score, no son univariantes calculados por medio de IQR.
+
+\newpage
+
+# Outliers multivariados por medio de clustering
+En este epígrafe del trabajo se lleva a cabo el cómputo de los outliers según la distancia euclídea de cada dato al centroide de su cluster. El centroide podrá ser cualquiera (podrá provenir de un k-means o ser un medoide, por ejemplo). Como los algoritmos de clustering se basan en distancias, ha de normalizar nuestro conjunto de datos:
+
+```{r}
+mis.datos.numericos <- dataset[,-ncol(dataset)]
+mis.datos.numericos.normalizados <- scale(mis.datos.numericos)
+rownames(mis.datos.numericos.normalizados) <- rownames(mis.datos.numericos)
+```
+
+A su vez, determinamos el número de outliers a hallar y el número de clusters existentes en los datos. De acuerdo a los expertos en el dominio de nuestro conjunto de datos (expertos en la columna vertebral humana), hay 3 tipos de columnas atendiendo a las características de las mismas aquí consideradas:
+
+*   Columna con hernia de disco 
+*   Columna con espondilolistesis
+*   Columna normal
+
+Así, se elegiran como número de clusters, tres y como número de outliers a analizar, diez:
+
+```{r}
+numero.de.outliers <- 10
+numero.de.clusters <- 3
+```
+
+## k-Means para la detección de outliers
+Así pues, en un primer lugar, para la determinación de los clusters se lleva a cabo un k-means. Establecemos la semilla para que este análisis sea reproducible:
+
+```{r}
+# Semilla para primera iteración del k-means
+set.seed(2)
+# Función k-means para número de clusters determinado
+modelo.kmeans <- kmeans(mis.datos.numericos.normalizados, centers = numero.de.clusters)
+# Índice de las observaciones asociadas a cada cluster
+indices.clustering <- modelo.kmeans$cluster
+# Centroides calculados tras k-means
+centroides.normalizados <- modelo.kmeans$centers
+
+head(indices.clustering, 20)
+centroides.normalizados
+```
+
+Así, hemos obtenido la etiqueta del cluster que le corresponde a cada observación de nuestro conjunto de datos, así como las coordenadas de los centroides según cada una de las dimensiones.
+
+## Distancia euclidea de las observaciones a los centroides
+La medida que determinará el grado en que una observación se aleja de su centroide y que por lo tanto, es un valor atípico, es la distancia. Esta puede estar calculada de formas distintas, siendo la euclídea una de las más habituales y la que usaremos a continuación:
+
+```{r}
+# Cálculo de la distancia euclídea de cada observación a su centroide
+dist.centroides <- 
+    distancias_a_centroides(datos.normalizados =
+                                mis.datos.numericos.normalizados,
+                            indices.asignacion.clustering = 
+                                indices.clustering,
+                            datos.centroides.normalizados = 
+                                centroides.normalizados)
+# Observaciones con mayor distancia euclídea a su centride
+top.outliers <- order(dist.centroides, decreasing = TRUE)[1:numero.de.outliers]
+
+head(dist.centroides, 10)
+top.outliers
+```
+
+Así, en las salidas anteriores vemos como se ha calculado tanto la distancia euclídea al centroide asignado para cada observación y a su vez, tenemos el índice de aquellas diez que tienen la mayor.
+
+### Implementación de una función para realizar el mismo experimento
+A fin de facilitar una automatización del proceso de hallar la distancia euclídea de las observaciones a su centroide y obtener las que más tienen, se genera una función con el mismo cometido:
+
+```{r}
+# Función que devuelve la distancia euclídea e índices de los valores
+# más alejados de su centroide.
+top_clustering_outliers <- function(datos.normalizados, 
+                                    indices.asignacion.clustering, 
+                                    datos.centroides.normalizados,
+                                    numero.de.outliers){
+    dist.centroides <- 
+        distancias_a_centroides(datos.normalizados = datos.normalizados,
+                                indices.asignacion.clustering = 
+                                    indices.asignacion.clustering,
+                                datos.centroides.normalizados = 
+                                    datos.centroides.normalizados)
+    top.outliers <- order(dist.centroides, decreasing = TRUE)[1:numero.de.outliers]
+    list("indices" = top.outliers, "distancias" = dist.centroides[top.outliers])
+}
+# Llamada a la función
+top.outliers.kmeans <- top_clustering_outliers(datos.normalizados =
+                                                   mis.datos.numericos.normalizados,
+                        indices.asignacion.clustering = indices.clustering,
+                        datos.centroides.normalizados = centroides.normalizados,
+                        numero.de.outliers = numero.de.outliers)
+
+top.outliers.kmeans$indices
+top.outliers.kmeans$distancias
+```
+
+Se puede apreciar que los índices  coinciden con los hallados de forma manual anteriormente, así como las distancias parecen ser las mayores, correspondientes a las observaciones susceptibles de ser outliers.
+
+### BiPlot con PCA y outliers multivariados hallados por clustering
+A continuación, se muestra una proyección de todas las variables sobre dos dimensiones y los clusters generados, donde se encuentran también etiquetados los outliers, que como podemos apreciar parecen ser los valores con mayor distancia al centroide de su cluster:
+
+```{r render=FALSE, echo=FALSE}
+numero.de.datos   = nrow(mis.datos.numericos)
+is.kmeans.outlier = rep(FALSE, numero.de.datos) 
+is.kmeans.outlier[top.outliers.kmeans$indices] = TRUE
+# is.kmeans.outlier[top.outliers.kmeans.distancia.relativa] = TRUE
+BIPLOT.isOutlier             = is.kmeans.outlier
+BIPLOT.cluster.colors        = c("blue","red","brown")     # Tantos colores como diga numero.de.clusters
+BIPLOT.asignaciones.clusters = indices.clustering
+```
+```{r}
+MiBiPlot_Clustering_Outliers(mis.datos.numericos, "K-Means Clustering Outliers")
+```
+
+Podemos apreciar en el biplot como la determinación de los tres clusters se ajusta en buena medida a nuestros datos. Del mismo modo, la mayor parte de outliers parecen corresponderse al tercer cluster.
+
+## Ampliación
+A continuación se lleva a cabo la parte del análisis reservada para aquellos que llevaron a cabo el trabajo de detección de anomalías frente al de reglas de asociación.
+
+### Revertir normalización de los centroides
+El valor de los centroides anteriormente determinado se hizo con los datos escalados, hecho que repercute en que el valor de estos también lo esté. Así, procedemos a revertir el proceso de la obtención del z-score:
+
+```{r}
+# Media de todos los atributos
+mis.datos.medias <- colMeans(mis.datos.numericos)
+# Desviación típica de todos los atributos
+mis.datos.desviaciones <- sapply(mis.datos.numericos, sd)
+# Despejar el valor real del cálculo del z-score
+mis.datos.desviaciones.por.centroides<-
+    sweep(centroides.normalizados,
+          mis.datos.desviaciones,FUN = "*",MARGIN = 2)
+centroides.valores<-
+    sweep(mis.datos.desviaciones.por.centroides,
+          mis.datos.medias,FUN="+",MARGIN=2)
+centroides.valores
+```
+
+Como podemos apreciar, el valor de las coordenadas de los centroides ya es el real y se ha logrado revertir el proceso de normalización.
+
+### Cálculo de outliers con distancia de Mahalanobis al centroide
+En vez de usar la distancia euclídea, podemos utilizar la de Mahalanobis para medir la separación entre una observación y el centroide al que está asignado. Así, definimos la función *top_clustering_outliers_distancia_mahalanobis* para llevar a cabo su cálculo y  hayar aquellos *numero.de.outliers* elementos de con la mayor.
+
+```{r}
+# Función para hayar distancia de Mahalanobis e índices de las observaciones
+# con mayor.
+top_clustering_outliers_distancia_mahalanobis = function(datos, 
+                                                         indices.asignacion.clustering, 
+                                                         numero.de.outliers){
+    cluster.ids = unique(indices.asignacion.clustering)
+    k           = length(cluster.ids)
+    seleccion   = sapply(1:k, function(x) indices.asignacion.clustering == x)
+    
+    # Usando la estimaci?n robusta de la media y covarianza: (cov.rob del paquete MASS:
+    lista.matriz.de.covarianzas   = lapply(1:k, function(x)
+        cov.rob(mis.datos.numericos[seleccion[,x],])$cov)
+    lista.vector.de.medias        = lapply(1:k, function(x)
+        cov.rob(mis.datos.numericos[seleccion[,x],])$center)
+    mah.distances   = lapply(1:k, 
+                             function(x) mahalanobis(mis.datos.numericos[seleccion[,x],], 
+                                                     lista.vector.de.medias[[x]], 
+                                                     lista.matriz.de.covarianzas[[x]]))  
+    todos.juntos = unlist(mah.distances)
+    todos.juntos.ordenados = names(todos.juntos[order(todos.juntos, decreasing=TRUE)])
+    indices.top.mah.outliers = as.numeric(todos.juntos.ordenados[1:numero.de.outliers])
+    
+    list(distancias = mah.distances[indices.top.mah.outliers], indices =
+             indices.top.mah.outliers)
+}
+# Semilla para que el resultado sea replicable
+set.seed(12)
+top.clustering.outliers.mah <-
+    top_clustering_outliers_distancia_mahalanobis(mis.datos.numericos[,-ncol(mis.datos.numericos)], 
+                                                  indices.clustering, numero.de.outliers)
+
+top.clustering.outliers.mah$indices
+```
+
+Los valores arriba impresos se corresponden con las 10 observaciones con mayor distancia de Mahalanobis al centroide del cluster que se les ha asignado. Este resultado se puede mostrar gráficamente en un biplot, proyección en dos dimensiones de los atributos de nuestro conjunto de datos, con los outliers hallados etiquetados con su ID de fila:
+
+```{r render=FALSE}
+numero.de.datos <- nrow(mis.datos.numericos)
+is.kmeans.outlier.mah <- rep(FALSE, numero.de.datos) 
+is.kmeans.outlier.mah[top.clustering.outliers.mah$indices] = TRUE
+BIPLOT.isOutlier             = is.kmeans.outlier.mah
+BIPLOT.cluster.colors        = c("blue","red","brown")
+BIPLOT.asignaciones.clusters = indices.clustering
+```
+```{r}
+MiBiPlot_Clustering_Outliers(mis.datos.numericos, "K-Means Clustering Outliers")
+```
+
+Efectivamente, tras ver el gráfico anterior, podemos estar casi seguros de que los outliers determinados por medio de la distancia de Mahalanobis son aquellos más alejados del centroide al cluster
+
+### Cálculo de outliers con distancia de relativa al centroide
+En vez de usar la distancia euclídea y de Mahalanobis, podemos utilizar la relativa para medir la separación entre una observación y el centroide al que está asignado. Así, definimos la función *top_clustering_outliers_distancia_relativa* para llevar a cabo su cálculo y  hayar aquellos *numero.de.outliers* elementos de con la mayor.
+
+```{r}
+# Función para hayar distancia relativa e índices de las observaciones
+# con mayor
+top_clustering_outliers_distancia_relativa = function(datos.normalizados, 
+                                                      indices.asignacion.clustering, 
+                                                      datos.centroides.normalizados, 
+                                                      numero.de.outliers){
+    
+    dist_centroides = distancias_a_centroides (datos.normalizados, 
+                                               indices.asignacion.clustering, 
+                                               datos.centroides.normalizados)
+    cluster.ids = unique(indices.asignacion.clustering)
+    k           = length(cluster.ids)
+    
+    distancias.a.centroides.por.cluster = sapply(1:k , function(x) 
+        dist_centroides [indices.asignacion.clustering  == cluster.ids[x]])
+    distancias.medianas.de.cada.cluster = sapply(1:k , function(x)
+        median(dist_centroides[[x]]))
+    
+    todas.las.distancias.medianas.de.cada.cluster  =
+        distancias.medianas.de.cada.cluster[indices.asignacion.clustering]
+    ratios = dist_centroides / todas.las.distancias.medianas.de.cada.cluster
+    
+    indices.top.outliers = order(ratios, decreasing=T)[1:numero.de.outliers]
+    
+    list(distancias = ratios[indices.top.outliers]  , indices = indices.top.outliers)
+}
+# Semilla para que el resultado sea replicable
+set.seed(12)
+top.outliers.kmeans.distancia.relativa <-
+    top_clustering_outliers_distancia_relativa(mis.datos.numericos.normalizados,
+                                               indices.clustering,
+                                               centroides.normalizados,
+                                               numero.de.outliers)
+cat("Índices de los top k clustering outliers (k-means, usando distancia relativa)\n")
+top.outliers.kmeans.distancia.relativa$indices 
+cat("Distancias a sus centroides de los top k clustering outliers (k-means, usando distancia relativa)\n")
+top.outliers.kmeans.distancia.relativa$distancias
+```
+
+Los valores arriba impresos se corresponden con las 10 observaciones con mayor distancia relativa al centroide del cluster que se les ha asignado. También se muestra la distancia de cada una de esas observaciones a su centroide.
+
+\newpage
+
+# Resumen de los resultados y conclusiones
+Tras haber llevado a cabo este trabajo, podemos concluir varios aspectos tanto del propio conjunto de datos objeto de análisis, como de la metodología empleada para su realización.
+
+En el conjunto de datos *Vertebral Column*, en terminos generales cabe esperar que al incluir defectos vertebrales más o menos serios, casi con totalidad encontraremos algún valor atípico. Así, una vez realizados los distintos análisis propuestos en el material de la asignatura, se ha podido comprobar que efectivamente hay ciertas observaciones que deben tener la consideración de outliers.
+
+En el análisis univariante por medio de IQR, hemos tratado específicamente la variable incidencia pélvica **(InciPel)**, en la cual hemos visto que tiene tres outliers normales y ninguno extremo. Para el resto de variables, el número de outliers se sitúa entre uno y ocho, habiendo dos extremos, uno en el grado de espondilolistesis **(GraEsp)** y en la pendiente sacra **(PenSac)**.
+
+Los test estadísticos para outliers univariantes (Grubbs y Rosner) han confirmado la existencia de varios de los outliers hallados por la IQR, si bien no todos, pues para algunos de los más cercanos a la mediana de las variables no se ha rechazado la hipótesis nula de la no existencia de esos outliers.
+
+En cuanto a los outliers multivariantes, se han aplicado diversos métodos para su identificación. En primer lugar con Mahalanobis a parte de los univariantes, se han identificado seis multivariantes puros. De forma gráfica se ha podido identificar que parece existir una relación entre la incidencia pélvica **(InciPel)**, inclinación de la pelvis **(InclPel)** y el radio de la pelvis **(RadPel)**, cuyos valores pueden ayudar a que se den outliers multivariados. Sin embargo, también se han observado ciertas limitaciones con la distancia de Mahalanobis, pues ante variables con varias distribuciones por la existencia de distintos grupos, tiende a considerar estas como outliers y no a los valores intermedios que realmente lo sean.
+
+Otro método que ha sido utilizado para outliers multivariantes ha sido la LOF-score, que considera la desviación local de un dato con respecto a sus vecinos. Este método soluciona las limitaciones de la distancia de Mahalanobis y parece que los outliers detectados tienen bastante sentido, si bien todo el análisis depende de la elección del número de vecinos a elegir, por lo que no resulta tan intuitivo para el autor del presente documento.
+
+El último método para analizar outliers multivariantes ha sido el clustering, hallando la distancia de las observaciones al centroide asignado a estas. La distancia euclídea parece dar buenos resultados, si bien cuando se ha utilizado la de Mahalanobis da la impresión que se ajusta mejor a la distribución de los datos. Sin embargo, cabe recalcar que este análsis tiene la limitación de que aunque se realiza para todas las variables, luego se ha de tener que elegir la frontera donde se establece si una observación es o no un outlier de forma manual.
+
+En general, en cualquier problema en el que interviene un conjunto de datos es imprescindible llevar a cabo un análisis de outliers dentro de nuestro EDA para entender mejor los datos o incluso descartar parte de estos. En el caso de este dataset concreto, es interesante realizar un análisis de estas características, ya que se pueden identificar sobre mediciones reales de columnas vertebrales, aquellas que guardan algún tipo de anomalía.

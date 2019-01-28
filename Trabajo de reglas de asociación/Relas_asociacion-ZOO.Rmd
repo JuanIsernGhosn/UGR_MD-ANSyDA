@@ -1,0 +1,350 @@
+---
+title: "Reglas de asociación: Conjunto de datos Zoo"
+author: | 
+  | Juan Ignacio Isern Ghosn
+  | Universidad de Granada
+  | Minería de Datos: Preprocesamiento y clasificación
+date: "17/01/2019"
+output: md_document
+---
+
+```{r setup, include=FALSE}
+# Markdown global options
+knitr::opts_chunk$set(echo = T, warning = FALSE)
+```
+
+\newpage
+\tableofcontents 
+\newpage
+
+# Resumen del experimento
+En este análisis del conjunto de datos **Zoo** de la librería *mlbench* por medio de reglas de asociación, se intentan encontrar aquellas relaciones existentes entre características de distintas especies de animales. Para ello, se harán uso de las funciones existentes dentro de los paquetes *arules* y *arulesViz*. Las conclusiones obtenidas tras este experimento se pueden entonctrar en el epígrafe _*Resultado y conclusiones*_ de este mismo documento.
+
+# Configuración del entorno del experimento
+A continuación, se lleva a cabo la carga de todas aquellas librerías, funciones y datos necesarios para llevar a cabo el experimento de forma exitosa
+
+## Carga de librerías necesarias
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(arules)
+library(arulesViz)
+library(mlbench)
+```
+
+## Carga del conjunto de datos: Zoo
+Cargamos el conjunto de datos **Zoo** de la librería *mlbench* y visualizamos las primeras líneas:
+```{r}
+data(Zoo)
+Zoo[1:2,] 
+```
+
+# Análisis exploratorio de datos (EDA)
+A fin de tener una ligera idea de la composición del conjunto de datos que nos atañe, se muestran las principales caracteríticas del mismo y tanto su estructura como la de sus variables
+
+## Estructura del conjunto de datos
+En primer lugar, visualizamos la estructura del conjunto de datos
+```{r}
+str(Zoo)
+```
+
+Podemos apreciar que:
+
+*   El conjunto de datos se compone de **101 observaciones** correspondientes a animales, de los cuales se diferencian **17 variables**.
+*   Las variables son principalmente de tipo booleano, exceptuando al número de piernas (**legs**), que es de tipo numérico entero y el tipo de animal (**type**), que se corresponde con una variable categórica numérica.
+
+## Valores perdidos
+Calculamos los valores perdidos para cada una de las variables:     
+```{r}
+apply(Zoo, MARGIN = 2, function(x) sum(is.na(x)))
+```
+
+Tal y como se puede apreciar, **no hay variables con valores perdidos** dentro de este conjunto de datos
+
+## Transformaciones necesarias
+A continuación se llevan a cabo algunas transformaciones necesarias, en nuestro caso, para poder adecuar la BD, de forma que pueda transformarse a un conjunto de transacciones. Así, se transforman las siguientes variables:
+
+*   legs que es una variable de tipo numérica. Para poder transformar la BD a un conjunto de transacciones, primero tendremos que dividir en intervalos esta variable. Aplicar un único corte en 0, generando 2 intervalos con las etiquetas no_legs y has_legs (tiene o no tiene piernas).
+```{r}
+Zoo[["legs"]] <- ordered(cut(Zoo[["legs"]], 
+                             c(-Inf,0,max(Zoo[["legs"]])), 
+                             labels = c("no_legs", "has_legs")))
+```
+
+*   En esta BD la mayoría de las variables son lógicas. Por lo tanto, será necesario cambiarlas todas a tipo factor antes de convertir la BD en transacciones para que el método apriori considere también los casos en los que las variables toman el valor false:
+```{r}
+cols <- as.logical(lapply(Zoo, is.logical))
+Zoo[cols] <- lapply(Zoo[cols], as.factor)  
+rm(cols)
+```
+
+# Análisis de reglas de asociación
+A continuación, se lleva a cabo el análisis de reglas de asociación.
+
+## Conversión del data-frame en conjunto de trasanciones
+El primer paso del análisis de reglas de asociación implica obtener un conjunto de transacciones sobre el cual llevar a cabo la búsqueda de reglas. Convertimos el data.frame en un conjunto de transacciones con la función as y lo guardamos en la variable ZooT:
+```{r}
+ZooT <- as(Zoo, "transactions")
+summary(ZooT)
+```
+
+Tal y como podemos apreciar, al no haber valores perdidos, **todos las transacciones son del tamaño del número de variables (17)**.
+
+### Representación de los items dentro de las transacciones
+Representamos gráficamente la distribución de los items en las transacciones:
+```{r}
+image(ZooT)
+```
+
+### Items más frecuentes
+Vemos gráficamente que items son los más importantes. Usamos como soporte mínimo **0.05**, para encontrar aquellos **items que afectan como mínimo a 5 animales** (5/101):
+```{r}
+itemFrequencyPlot(ZooT, support = 0.05, cex.names=0.7)
+```
+
+Como se puede apreciar, tres de los items más frecuentes, que a su vez se corresponden con los items de mayor soporte, son **no-venenosos**, **no-domésticos** y **no-plumas**.
+
+## Itemsets
+A continuación, calculamos los distintos itemsets que se dan dentro de las transacciones, considerando por cuestiones prácticas aquellos que son frecuentes, los maximales y los cerrados.
+
+### Itemsets frecuentes
+Usamos apriori para extraer los itemsets frecuentes que afectan como mínimo a 5 animales (support = 0.05). Para ello ponemos en la lista de parámetros target="frequent":
+```{r}
+iZoo <- apriori(ZooT, parameter = list(support = 0.05, target="frequent"))
+iZoo <- sort(iZoo, by="support")
+inspect(head(iZoo, n=10))
+```
+
+Se han obtenido más de 500.000 itemsets frecuentes. Asu vez, se aprecia como de los diez primeros de mayor soporte, la mayoría son de tamaño 1, exceptuando **{venomous=FALSE,domestic=FALSE}** y **{backbone=TRUE,venomous=FALSE}**.
+
+#### Tamaño de los itemsets frecuentes
+Podemos consultar con la función size el tamaño de los itemsets frecuentes. Así representamos el tamaño de los distintos itemsets por medio de un diagrama de barras.
+```{r}
+barplot(table(size(iZoo)), xlab="itemsetsize", ylab="count")
+```
+
+A su vez, podemos inspeccionar aquellos itemsets con un tamaño más grande:
+```{r}
+inspect(head(iZoo[size(iZoo)==4]))
+```
+
+### Itemsets maximales
+Como son muchos itemsets frecuentes, podemos quedarnos solo con los itemsets maximales:
+```{r}
+imaxZoo<-iZoo[is.maximal(iZoo)]
+inspect(head(sort(imaxZoo, by="support")))
+```
+
+### Itemsets cerrados
+También podemos extraer los itemsets cerrados:
+```{r}
+icloZoo <- iZoo[is.closed(iZoo)]
+inspect(head(sort(icloZoo, by="support")))
+```
+
+### Comparativa entre el número de itemsets
+El recuento del número de itemsets frecuentes, maximales y cerrados es el siguiente:
+```{r}
+barplot(c(frequent=length(iZoo), closed=length(icloZoo),
+          maximal=length(imaxZoo)), ylab="count", xlab="itemsets")
+```
+
+Tal y como podemos apreciar, el número de itemsets frecuentes supera ampliamente los 500.000, por lo que habría que llevar a cabo un filtrado posterior a fin de hacer este análisis abordable o directamente, hacer uso de los itemsets cerrados o maximales. En nuestro caso **haremos uso de los itemsets cerrados para la generación de reglas**.
+
+# Análisis de reglas de asociación
+A continuación, se lleva a cabo el análisis de las reglas de asociación a fin de obtener aquellas relaciones mas relevantes que se dan entre atributos. 
+
+## Minado de reglas
+Como bien hemos dicho, haremos uso de los itemsets cerrados para el minado de reglas. Al usar itemsets cerrados, limitamos el soporte a 0.05 (que afecten a 5 animales como mínimo: 5/101), pues los itemsets cerrados son frecuentes. La confianza la establecemos en 0.7 y una longitud de reglas de 2 a 9.
+
+```{r}
+closed_rules <- ruleInduction(icloZoo, ZooT, confidence = 0.7)
+closed_rules <- closed_rules[size(items(closed_rules)) < 10 & size(items(closed_rules)) > 1]
+```
+
+Primeras reglas del conjunto obtenido y medidas de calidad
+```{r}
+inspect(head(closed_rules))
+```
+
+Reglas ordenadas por confianza
+```{r}
+rulesSorted <- sort(closed_rules, by = "confidence")
+inspect(head(rulesSorted))
+```
+
+## Eliminación de reglas redundantes
+Eliminamos aquellas reglas que resultan reduntantes a fin de disminuir nuestro set de reglas a analizar:
+```{r}
+subsetMatrix <- is.subset(rulesSorted, rulesSorted)
+subsetMatrix[lower.tri(subsetMatrix, diag=TRUE)] <- FALSE
+redundant <-colSums(subsetMatrix, na.rm=TRUE) >= 1
+rulesPruned<-rulesSorted[!redundant]
+inspect(head(rulesPruned))
+```
+
+# Resultados y conclusiones
+De entre todos los ejemplos de reglas que podríamos extraer, nos centraremos en algunas de aquellas destaquen alguna de las características de los animales, en nuestro caso que tengan cola o que sean animales voladores y posteriormente, buscaremos reglas que definan la tipología animal concreta establecida para cada animal (mamífero, anfibio...).
+
+## Reglas de características de animales concretas
+### Reglas para animales que tienen cola
+A continuación vamos a estudiar aquellas reglas que contienen dentro del precedente milk = true:
+```{r}
+rulesTailTrue <- subset(rulesPruned, subset = lhs %in% "tail=TRUE" & lift > 1.2 & confidence < 1)
+inspect(head(sort(rulesTailTrue, by="confidence")))
+```
+
+Al estudiar aquellos animales que tienen cola, apreciamos los siguientes hechos:
+
+*   Si bien parece que suele estar bastante relacionado que tener cola implica que el animal tenga esqueleto, vemos como en la regla 1 esto no es así en la totalidad de casos. Así, visualizamos los casos en los que esto no se da y descubrimos que la única excepción es el **escorpión**:
+```{r}
+subset(Zoo, tail == TRUE & backbone == FALSE)
+```
+
+*   Tabién se aprecia una relación entre aquellos animales que tienen cola, no tienen aletas, no son domésticos y respiran aire, si bien también existen excepciones, como la **serpiente de agua**, que no respira aire:
+```{r}
+subset(Zoo, tail == TRUE & fins == FALSE & domestic==FALSE & breathes == FALSE)
+```
+
+*   Si bien todas la mayoría de especies que tienen cola, no vuelan y sin aletas, suelen respirar aire, este no es el caso tampoco de **la serpiente de agua**, tal y como podemos apreciar:
+```{r}
+subset(Zoo, tail == TRUE & airborne == FALSE & fins == FALSE & breathes == FALSE)
+```
+
+Tanto estas conclusiones, como muchas otras tantas que se pueden obtener acerca de los animales que tienen cola, pueden apreciarse en el siguiente grafo:
+```{r, message=FALSE}
+plot(rulesTailTrue, method="graph")
+```
+
+### Reglas para animales que ponen huevos
+A continuación vamos a estudiar aquellas reglas que contienen dentro del precedente eggs = true:
+```{r}
+rulesEggsTrue <- subset(rulesPruned, subset = lhs %in% "eggs=TRUE" & lift > 1.2 & confidence < 1)
+inspect(head(sort(rulesEggsTrue, by="confidence")))
+```
+
+Al estudiar aquellos animales aereos, apreciamos una única regla de importancia sufieciente en base a nuestros criterios:
+
+*   Aquellos animales ponedores de huevos, no amamantan a sus crias, tal y como podemos observar:
+```{r}
+head(subset(Zoo, eggs == TRUE & milk == FALSE))
+```
+
+Sin embargo encontramos una excepción, como es el **ornitorrinco**, que como bien sabemos, es un mamífero y si amamanta a sus crias:
+```{r}
+subset(Zoo, eggs == TRUE & milk == TRUE)
+```
+
+Esta regla puede apreciarse en el siguiente grafo:
+```{r, message=FALSE}
+plot(rulesEggsTrue, method="graph")
+```
+
+## Reglas para la tipología animal
+A continuación, hallaremos las reglas que solo incluyen en el consecuente el tipo de animal. Seremos algo más permisivos con la medida de confianza de estas reglas y incrementaremos su longitud:
+```{r}
+rulesType <- apriori(ZooT, parameter = list(support = 0.05, confidence = 0.8, minlen = 2, maxlen = 6),
+                 appearance = list(rhs=paste0("type=", unique(Zoo$type))))
+rulesSortedType <- sort(rulesType, by = "confidence")
+subsetMatrix <- is.subset(rulesSortedType, rulesSortedType)
+subsetMatrix[lower.tri(subsetMatrix, diag=TRUE)] <- FALSE
+redundant <-colSums(subsetMatrix, na.rm=TRUE) >= 1
+rulesPrunedType<-rulesSortedType[!redundant]
+inspect(head(rulesPrunedType))
+```
+
+### Reglas para mamíferos
+A continuación se obtienen reglas para animales de tipo mamífero
+```{r}
+rulesType <- subset(rulesPrunedType, lift > 1.2 & support > 0.4 & rhs %in% "type=mammal")
+inspect(head(sort(rulesType, by="lift", decreasing = TRUE)))
+```
+
+Algunas reglas básicas para mamíferos son:
+
+*   Dan leche a sus crias.
+*   No tienen plumas, si esqueleto, respiran aire y no son venenosos. 
+
+### Reglas para insectos
+A continuación se obtienen reglas para animales de tipo insecto
+```{r}
+rulesType <- subset(rulesPrunedType, lift > 1.2 & support > 0.07 & rhs %in% "type=insect")
+inspect(head(sort(rulesType, by="lift", decreasing = TRUE)))
+```
+
+La regla básicas que más caracteriza a los insectos es:
+
+*   No son de tipo acuático, no tienen esqueleto, tienen piernas pero no cola.
+*   Además, a esta regla anterior puede incluirse que respiran y que ponen huevos.
+
+### Reglas para pajaros
+A continuación se obtienen reglas para animales de tipo pájaro:
+```{r}
+rulesType <- subset(rulesPrunedType, lift > 1.2 & support > 0.15 & rhs %in% "type=bird")
+inspect(head(sort(rulesType, by="lift", decreasing = TRUE)))
+```
+
+Las reglas básicas que más caracterizan a los pájaros son:
+
+*   Tienen plumas.
+*   Vuelan, no tienen dientes pero si cola.
+*   Ponen huevos y tienen esqueleto.
+
+### Reglas para moluscos et al.
+A continuación se obtienen reglas para animales de tipo molusco y similares:
+```{r}
+rulesType <- subset(rulesPrunedType, rhs %in% "type=mollusc.et.al")
+inspect(head(sort(rulesType, by="lift", decreasing = TRUE)))
+```
+
+Las reglas básicas que más caracterizan a los moluscos son:
+
+*   No tienen esqueleto ni respiran aire.
+*   No tienen esqueleto y son de tipo acuático.
+*   Similares a estas reglas tanto en confianza y en lift, encontramos otras que consideran que ponen huevos, no tienen dientes, son depredadores y no tienen cola.
+
+### Reglas para peces
+A continuación se obtienen reglas para animales de tipo molusco y similares:
+```{r}
+rulesType <- subset(rulesPrunedType, rhs %in% "type=fish")
+inspect(head(sort(rulesType, by="lift", decreasing = TRUE)))
+```
+
+La regla básica que más caracterizan a los peces es:
+
+*   No respiran aire, tienen aletas y ponen huevos.
+*   Se consideran otros items en reglas de similar medida de confianza, soporte y lift, como que no son de tamaño parecido al de un gato, no ponen leche y tienen dientes.
+
+### Reglas para anfibios
+Debido a que el número de ocurrencias de anfibios es mínimo, es practicamente imposible que se encuentren itemsets frecuentes de los cuales obtener reglas. Es por ello que generamos reglas para con soporte menos restrictivo:
+```{r}
+rulesType <- apriori(ZooT, parameter = list(support = 0.02, confidence = 0.8, minlen = 2, maxlen = 8),
+                 appearance = list(rhs="type=amphibian"))
+rulesSortedType <- sort(rulesType, by = "confidence")
+subsetMatrix <- is.subset(rulesSortedType, rulesSortedType)
+subsetMatrix[lower.tri(subsetMatrix, diag=TRUE)] <- FALSE
+redundant <-colSums(subsetMatrix, na.rm=TRUE) >= 1
+rulesPrunedType<-rulesSortedType[!redundant]
+rulesType <- subset(rulesPrunedType, size(lhs)>5)
+inspect(head(sort(rulesType, by="lift", decreasing = TRUE)))
+```
+
+La regla básica que más caracterizan a los anfibios es:
+
+*  Ponen huevos, son acuáticos, tienen esqueleto, no tienen aletas, no son de tamaño parecido al de un gato y no vuelan.
+
+### Reglas para reptiles
+Al igual que ocurre con los anfibios, el número de ocurrencias de reptiles es mínimo y por lo tanto imposible que se encuentren itemsets frecuentes de los cuales obtener reglas. Es por ello que generamos reglas con soporte mínimo inferior:
+```{r}
+rulesType <- apriori(ZooT, parameter = list(support = 0.03, confidence = 0.8, minlen = 2, maxlen = 8),
+                 appearance = list(rhs="type=reptile"))
+rulesSortedType <- sort(rulesType, by = "confidence")
+subsetMatrix <- is.subset(rulesSortedType, rulesSortedType)
+subsetMatrix[lower.tri(subsetMatrix, diag=TRUE)] <- FALSE
+redundant <-colSums(subsetMatrix, na.rm=TRUE) >= 1
+rulesPrunedType<-rulesSortedType[!redundant]
+rulesType <- subset(rulesPrunedType, size(lhs)>4)
+inspect(head(sort(rulesType, by="lift", decreasing = TRUE)))
+```
+
+La regla básica que más caracterizan a los reptiles es:
+
+*  No tienen pelo ni plumas, tienen esqueleto pero no aletas y tienen cola.
