@@ -5,10 +5,7 @@ author: |
   | Universidad de Granada
   | Minería de datos: Aprendizaje no supervisado y detección de anomalías
 date: "15/02/2019"
-output: 
-    pdf_document:
-        fig_caption: true
-        number_sections: true
+output: md_document
 ---
 
 ```{r setup, include=FALSE}
@@ -699,10 +696,10 @@ centroides.valores
 Como podemos apreciar, el valor de las coordenadas de los centroides ya es el real y se ha logrado revertir el proceso de normalización.
 
 ### Cálculo de outliers con distancia de Mahalanobis al centroide
-En vez de usar la distancia euclídea, podemos utilizar la de Mahalanobis para medir la separación entre una observación y el centroide al que está asignado. Así, definimos la función *top_clustering_outliers_distancia_mahalanobis* para llevar a cabo su cálculo y  hayar aquellos *numero.de.outliers* elementos de con la mayor.
+En vez de usar la distancia euclídea, podemos utilizar la de Mahalanobis para medir la separación entre una observación y el centroide al que está asignado. Así, definimos la función *top_clustering_outliers_distancia_mahalanobis* para llevar a cabo su cálculo y  hallar aquellos *numero.de.outliers* elementos de con la mayor.
 
 ```{r}
-# Función para hayar distancia de Mahalanobis e índices de las observaciones
+# Función para hallar distancia de Mahalanobis e índices de las observaciones
 # con mayor.
 top_clustering_outliers_distancia_mahalanobis = function(datos, 
                                                          indices.asignacion.clustering, 
@@ -753,10 +750,10 @@ MiBiPlot_Clustering_Outliers(mis.datos.numericos, "K-Means Clustering Outliers")
 Efectivamente, tras ver el gráfico anterior, podemos estar casi seguros de que los outliers determinados por medio de la distancia de Mahalanobis son aquellos más alejados del centroide al cluster
 
 ### Cálculo de outliers con distancia de relativa al centroide
-En vez de usar la distancia euclídea y de Mahalanobis, podemos utilizar la relativa para medir la separación entre una observación y el centroide al que está asignado. Así, definimos la función *top_clustering_outliers_distancia_relativa* para llevar a cabo su cálculo y  hayar aquellos *numero.de.outliers* elementos de con la mayor.
+En vez de usar la distancia euclídea y de Mahalanobis, podemos utilizar la relativa para medir la separación entre una observación y el centroide al que está asignado. Así, definimos la función *top_clustering_outliers_distancia_relativa* para llevar a cabo su cálculo y  hallar aquellos *numero.de.outliers* elementos de con la mayor.
 
 ```{r}
-# Función para hayar distancia relativa e índices de las observaciones
+# Función para hallar distancia relativa e índices de las observaciones
 # con mayor
 top_clustering_outliers_distancia_relativa = function(datos.normalizados, 
                                                       indices.asignacion.clustering, 

@@ -1105,10 +1105,10 @@ En vez de usar la distancia euclídea, podemos utilizar la de Mahalanobis
 para medir la separación entre una observación y el centroide al que
 está asignado. Así, definimos la función
 *top\_clustering\_outliers\_distancia\_mahalanobis* para llevar a cabo
-su cálculo y hayar aquellos *numero.de.outliers* elementos de con la
+su cálculo y hallar aquellos *numero.de.outliers* elementos de con la
 mayor.
 
-    # Función para hayar distancia de Mahalanobis e índices de las observaciones
+    # Función para hallar distancia de Mahalanobis e índices de las observaciones
     # con mayor.
     top_clustering_outliers_distancia_mahalanobis = function(datos, 
                                                              indices.asignacion.clustering, 
@@ -1170,9 +1170,10 @@ En vez de usar la distancia euclídea y de Mahalanobis, podemos utilizar
 la relativa para medir la separación entre una observación y el
 centroide al que está asignado. Así, definimos la función
 *top\_clustering\_outliers\_distancia\_relativa* para llevar a cabo su
-cálculo y hayar aquellos *numero.de.outliers* elementos de con la mayor.
+cálculo y hallar aquellos *numero.de.outliers* elementos de con la
+mayor.
 
-    # Función para hayar distancia relativa e índices de las observaciones
+    # Función para hallar distancia relativa e índices de las observaciones
     # con mayor
     top_clustering_outliers_distancia_relativa = function(datos.normalizados, 
                                                           indices.asignacion.clustering, 
